@@ -928,8 +928,22 @@ class HerAIApp:
         """Initialize HerAI components"""
         with st.spinner("💕 Initializing HerAI..."):
             try:
-                # Get API key
-                api_key = os.getenv("GROQ_API_KEY") or st.session_state.get('user_api_key')
+                # Get API key - try multiple sources
+                api_key = None
+                
+                # 1. Try Streamlit secrets (for Streamlit Cloud)
+                try:
+                    api_key = st.secrets.get("GROQ_API_KEY")
+                except:
+                    pass
+                
+                # 2. Try environment variable (for local .env)
+                if not api_key:
+                    api_key = os.getenv("GROQ_API_KEY")
+                
+                # 3. Try session state (user entered via UI)
+                if not api_key:
+                    api_key = st.session_state.get('user_api_key')
                 
                 # Get LLM instance
                 llm = get_llm_instance(api_key)
