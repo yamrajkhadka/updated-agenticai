@@ -1,0 +1,24 @@
+# Core LangChain - Updated versions
+langchain>=0.1.0
+langchain-community>=0.0.13
+langgraph>=0.0.20
+langchain-core>=0.1.10
+
+# Vector Store - Fixed version (1.7.4 doesn't exist, using latest)
+faiss-cpu>=1.13.0
+
+# LLM Providers (choose one or use both)
+ollama>=0.1.6
+# anthropic>=0.8.1  # Uncomment if using Claude
+openai>=1.7.2
+
+# Embeddings
+sentence-transformers>=2.2.2
+
+# UI
+streamlit>=1.29.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+numpy>=1.24.0
