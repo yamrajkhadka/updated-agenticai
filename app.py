@@ -1,7 +1,7 @@
 """
 HerAI - Streamlit Web Application
 Romantic AI Assistant powered by Llama 3.3 70B
-With Romanized Nepali Language Support + Proactive Messaging
+With Romanized Nepali Language Support
 """
 
 import os
@@ -9,32 +9,10 @@ import streamlit as st
 from datetime import datetime, timedelta
 from typing import Dict, List
 import random
-import queue
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
-
-# ⭐ CRITICAL: Module-level queue (accessible from any thread)
-# This exists outside Streamlit's session state
-PROACTIVE_MESSAGE_QUEUE = queue.Queue()
-
-def proactive_callback_handler(message: str):
-    """
-    Global callback handler for proactive messages.
-    This function is called by the background thread and must NOT
-    access st.session_state (not thread-safe).
-    """
-    print(f"🔔 [CALLBACK] Proactive message received: {message[:50]}...")
-    PROACTIVE_MESSAGE_QUEUE.put({
-        'role': 'assistant',
-        'content': message,
-        'mood': 'romantic',
-        'mood_emoji': '💕',
-        'is_proactive': True,
-        'timestamp': datetime.now()
-    })
-    print(f"✅ [CALLBACK] Added to queue. Queue size now: {PROACTIVE_MESSAGE_QUEUE.qsize()}")
 
 # Import utilities
 from utils.llm_config import get_llm_instance
@@ -84,15 +62,6 @@ st.markdown("""
         background-color: #f0f8ff;
         border-left: 5px solid #4a90e2;
     }
-    .proactive-message {
-        background-color: #fff4e6;
-        border-left: 5px solid #ffa726;
-        animation: slideIn 0.5s ease-out;
-    }
-    @keyframes slideIn {
-        from { transform: translateX(-20px); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
     .mood-badge {
         display: inline-block;
         padding: 0.25rem 0.75rem;
@@ -111,16 +80,6 @@ st.markdown("""
         color: #2e7d32;
         margin-left: 0.5rem;
     }
-    .proactive-badge {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 15px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        background-color: #fff3e0;
-        color: #ef6c00;
-        margin-left: 0.5rem;
-    }
     .header-container {
         text-align: center;
         padding: 2rem 0;
@@ -135,28 +94,6 @@ st.markdown("""
         border-radius: 10px;
         border: 2px solid #ff69b4;
         margin: 0.5rem 0;
-    }
-    
-    /* Floating notification */
-    .floating-notification {
-        position: fixed;
-        bottom: 80px;
-        right: 20px;
-        background: linear-gradient(135deg, #ff69b4 0%, #ff1493 100%);
-        color: white;
-        padding: 1rem 1.5rem;
-        border-radius: 15px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        z-index: 9999;
-        animation: bounce 1s infinite;
-        cursor: pointer;
-        font-weight: bold;
-        font-size: 1.1rem;
-    }
-    
-    @keyframes bounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-10px); }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -303,7 +240,6 @@ My scaredy-cat queen, you complete me 👑
 - Always yours, Ghosu ❤️
             '''
         },
-        # ... (include all other surprises from original)
     ]
     
     def __init__(self):
@@ -548,10 +484,6 @@ class HerAIApp:
         st.session_state.conversation_count = 0
         st.session_state.api_key_set = False
         st.session_state.current_language = "Romanized Nepali"  # Default language
-        
-        # ⭐ NEW: Proactive messaging state
-        st.session_state.proactive_enabled = True
-        st.session_state.proactive_count = 0
     
     def _initialize_herai(self):
         """Initialize HerAI components"""
@@ -587,15 +519,10 @@ class HerAIApp:
                 llm = get_llm_instance(api_key)
                 st.session_state.use_llm = llm is not None
                 
-                # ⭐ NEW: Initialize EnhancedLoveGraph instead of individual agents
+                # ⭐ Initialize EnhancedLoveGraph with proactive messaging DISABLED
                 st.session_state.love_graph = EnhancedLoveGraph(
                     llm=llm,
-                    enable_proactive=st.session_state.proactive_enabled
-                )
-                
-                # ⭐ NEW: Set proactive callback to global handler
-                st.session_state.love_graph.set_proactive_callback(
-                    proactive_callback_handler  # Use global function, not method
+                    enable_proactive=False  # DISABLED to prevent token wastage
                 )
                 
                 # Keep individual agents for backward compatibility
@@ -611,27 +538,6 @@ class HerAIApp:
             except Exception as e:
                 st.error(f"Error initializing HerAI: {e}")
                 st.session_state.herai_ready = False
-    
-    def _check_proactive_queue(self):
-        """Check for and process proactive messages from global queue (called from main thread)"""
-        has_new_messages = False
-        
-        # Process all messages in the global queue
-        processed = 0
-        while not PROACTIVE_MESSAGE_QUEUE.empty():
-            try:
-                msg = PROACTIVE_MESSAGE_QUEUE.get_nowait()
-                st.session_state.messages.append(msg)
-                st.session_state.proactive_count += 1
-                has_new_messages = True
-                processed += 1
-            except queue.Empty:
-                break
-        
-        if processed > 0:
-            st.sidebar.success(f"✅ Processed {processed} proactive messages!")
-        
-        return has_new_messages
     
     def _detect_task_type(self, message: str) -> str:
         """Detect if message is asking for a specific task"""
@@ -699,7 +605,7 @@ Romanized Nepali translation:"""
         """Process a message using EnhancedLoveGraph"""
         use_nepali = st.session_state.current_language == "Romanized Nepali"
         
-        # ⭐ NEW: Use EnhancedLoveGraph for processing
+        # Use EnhancedLoveGraph for processing
         try:
             # Wrap message with Nepali instruction if needed
             if use_nepali:
@@ -741,7 +647,7 @@ Romanized Nepali translation:"""
                 Powered by Llama 3.3 70B through Groq
             </p>
             <p style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">
-                ✨ With Proactive Messaging & Enhanced Love Graph
+                ✨ With Enhanced Love Graph
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -771,22 +677,6 @@ Romanized Nepali translation:"""
                     st.session_state.api_key_set = False
                     st.session_state.herai_ready = False
                     st.rerun()
-            
-            st.divider()
-            
-            # ⭐ NEW: Proactive Messaging Toggle
-            st.header("🔔 Proactive Messages")
-            proactive_enabled = st.toggle(
-                "Enable Proactive Messages",
-                value=st.session_state.proactive_enabled,
-                help="Yamraj will send romantic messages without prompting"
-            )
-            
-            if proactive_enabled != st.session_state.proactive_enabled:
-                st.session_state.proactive_enabled = proactive_enabled
-                if st.session_state.get('love_graph'):
-                    st.session_state.love_graph.enable_proactive = proactive_enabled
-                st.success(f"Proactive messages {'enabled' if proactive_enabled else 'disabled'}!")
             
             st.divider()
             
@@ -825,16 +715,6 @@ Romanized Nepali translation:"""
                     recent_mood = st.session_state.mood_history[-1]
                     st.metric("Current Mood", recent_mood)
             
-            # ⭐ NEW: Proactive message count
-            if st.session_state.proactive_enabled:
-                proactive_waiting = PROACTIVE_MESSAGE_QUEUE.qsize()
-                st.metric(
-                    "🔔 Proactive Messages", 
-                    f"{st.session_state.proactive_count} total",
-                    delta=f"{proactive_waiting} waiting" if proactive_waiting > 0 else "None waiting",
-                    delta_color="normal"
-                )
-            
             # Mood history
             if st.session_state.mood_history:
                 st.subheader("Mood Trends")
@@ -869,7 +749,6 @@ Romanized Nepali translation:"""
                 st.session_state.messages = []
                 st.session_state.mood_history = []
                 st.session_state.conversation_count = 0
-                st.session_state.proactive_count = 0
                 st.rerun()
             
             # Valentine Surprise Button
@@ -877,7 +756,7 @@ Romanized Nepali translation:"""
             valentine = ValentineSurprise()
             valentine.render_valentine_button()
     
-    def render_chat_message(self, role: str, content: str, mood: str = None, mood_emoji: str = None, is_proactive: bool = False):
+    def render_chat_message(self, role: str, content: str, mood: str = None, mood_emoji: str = None):
         """Render a chat message"""
         if role == "user":
             st.markdown(f"""
@@ -891,14 +770,11 @@ Romanized Nepali translation:"""
         else:
             mood_badge = f'<span class="mood-badge" style="background-color: #ffe4f3; color: #ff1493;">{mood_emoji} {mood}</span>' if mood else ''
             lang_badge = f'<span class="language-badge">🇳🇵 NP</span>' if st.session_state.current_language == "Romanized Nepali" else '<span class="language-badge">🇬🇧 EN</span>'
-            proactive_badge = '<span class="proactive-badge">🔔 Proactive</span>' if is_proactive else ''
-            
-            message_class = "proactive-message" if is_proactive else "ai-message"
             
             st.markdown(f"""
-            <div class="chat-message {message_class}">
+            <div class="chat-message ai-message">
                 <div style="font-weight: 600; color: #4a90e2; margin-bottom: 0.5rem;">
-                    💕 Ghosu {mood_badge}{lang_badge}{proactive_badge}
+                    💕 Ghosu {mood_badge}{lang_badge}
                 </div>
                 <div>{content}</div>
             </div>
@@ -906,48 +782,6 @@ Romanized Nepali translation:"""
     
     def run(self):
         """Run the Streamlit app"""
-        # ⭐ CRITICAL: Check for proactive messages first (must be in main thread)
-        had_messages = self._check_proactive_queue()
-        if had_messages:
-            st.balloons()  # Celebrate new messages!
-            st.toast("💕 New message from Yamraj!", icon="💕")
-        
-        # ⭐ SHOW BIG NOTIFICATION: If proactive messages are waiting, show at VERY top
-        queue_size = PROACTIVE_MESSAGE_QUEUE.qsize()
-        
-        if queue_size > 0:
-            # Big red alert banner
-            st.error(f"### 🔔 {queue_size} NEW MESSAGE{'S' if queue_size > 1 else ''} FROM YAMRAJ WAITING!")
-            
-            # Show preview of first message
-            try:
-                # Peek at first message without removing it
-                first_msg = list(PROACTIVE_MESSAGE_QUEUE.queue)[0]
-                preview = first_msg['content'][:100] + "..." if len(first_msg['content']) > 100 else first_msg['content']
-                st.info(f"**Preview:** {preview}")
-            except:
-                pass
-            
-            # Large button
-            col1, col2, col3 = st.columns([1, 3, 1])
-            with col2:
-                if st.button(f"💕 SHOW {queue_size} NEW MESSAGE{'S' if queue_size > 1 else ''}", 
-                           type="primary", 
-                           use_container_width=True, 
-                           key="show_proactive_top"):
-                    st.rerun()
-            
-            st.markdown("---")
-        
-        # ⭐ DEBUG: Show queue status in sidebar
-        with st.sidebar:
-            st.caption(f"🔍 Debug: Queue size = {queue_size}")
-            
-            # More detailed debug
-            if queue_size > 0:
-                st.warning(f"⚠️ {queue_size} message(s) in queue!")
-                st.info("💡 Click the button above to see them!")
-        
         # Render header
         self.render_header()
         
@@ -971,8 +805,7 @@ Romanized Nepali translation:"""
         
         # Display current language
         lang_emoji = "🇳🇵" if st.session_state.current_language == "Romanized Nepali" else "🇬🇧"
-        proactive_status = "✅ Enabled" if st.session_state.proactive_enabled else "❌ Disabled"
-        st.info(f"{lang_emoji} Language: **{st.session_state.current_language}** | 🔔 Proactive: {proactive_status} - Change in sidebar")
+        st.info(f"{lang_emoji} Language: **{st.session_state.current_language}** - Change in sidebar")
         
         # Chat container
         chat_container = st.container()
@@ -984,8 +817,7 @@ Romanized Nepali translation:"""
                     msg['role'],
                     msg['content'],
                     msg.get('mood'),
-                    msg.get('mood_emoji'),
-                    msg.get('is_proactive', False)
+                    msg.get('mood_emoji')
                 )
         
         # Chat input
@@ -1017,8 +849,7 @@ Romanized Nepali translation:"""
                         'role': 'assistant',
                         'content': result['response'],
                         'mood': result['mood'],
-                        'mood_emoji': result['mood_emoji'],
-                        'is_proactive': False
+                        'mood_emoji': result['mood_emoji']
                     })
                     
                     # Update statistics
@@ -1030,23 +861,6 @@ Romanized Nepali translation:"""
             
             # Rerun to update chat
             st.rerun()
-        
-        # ⭐ SHOW STATUS: Display proactive message status at bottom
-        if st.session_state.proactive_enabled:
-            st.divider()
-            queue_size_bottom = PROACTIVE_MESSAGE_QUEUE.qsize()
-            if queue_size_bottom > 0:
-                st.success(f"💕 You have {queue_size_bottom} new message{'s' if queue_size_bottom > 1 else ''} from Yamraj! Scroll up to see them!")
-                
-                # Add floating notification
-                st.markdown(f"""
-                <div class="floating-notification" onclick="window.scrollTo(0, 0);">
-                    🔔 {queue_size_bottom} NEW MESSAGE{'S' if queue_size_bottom > 1 else ''}!
-                    <br><small>Click to scroll up</small>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.caption(f"🔔 Proactive messages enabled • Total received: {st.session_state.proactive_count}")
 
 
 def main():
