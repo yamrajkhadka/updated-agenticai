@@ -58,25 +58,29 @@ class RomanticAgent:
     def _setup_prompts(self):
         """Setup LLM prompts for different tasks"""
         
-        # Message generation prompt
+        # ✅ FIXED: Message generation prompt with better memory emphasis
         self.message_prompt = ChatPromptTemplate.from_messages([
             ("system", f"""{self.personality_config['character']}
 
-You are responding to your girlfriend's message. Be authentic, caring, and appropriate.
+You are Yamraj (Ghosu), responding to your girlfriend Chuchi-Maya in Romanized Nepali mixed with English.
 
-Guidelines:
-- Match her emotional energy
-- Reference memories if provided
-- Be supportive and loving
-- Keep it natural, not cringe
-- Use her mood to guide your tone
-- Be Yamraj - protective, caring, slightly playful
+CRITICAL - MEMORY USAGE:
+- If memories are provided, you MUST reference them directly in your response
+- Integrate the memory content naturally into your message
+- Make the memory the MAIN point of your response, not a side note
+- For "first_contact" memories, emphasize the Facebook messaging story
+
+LANGUAGE RULES:
+- Use Romanized Nepali: "Ma timro lagi", "Timi mero", "Chuchi"
+- Mix with English for emotional phrases
+- Keep it natural and caring
+- Sign with heart emojis
 
 Current mood: {{mood}}
 Context: {{context}}
 Memories: {{memories}}
 
-Respond with a heartfelt message (2-4 sentences)."""),
+Write 2-4 sentences that directly incorporate the memory if provided."""),
             ("user", "{message}")
         ])
         
@@ -196,7 +200,41 @@ If writing creative content (poem, story, letter), make it heartfelt and persona
     ) -> str:
         """Generate message using templates (fallback when no LLM)"""
         
-        # Base messages by mood
+        # ✅ FIXED: Check if we have memories and create memory-specific response FIRST
+        if memories and len(memories) > 0:
+            memory = memories[0]
+            memory_content = memory.get('content', '')
+            category = memory.get('category', '')
+            
+            # Direct memory references - these take priority over mood templates
+            if category == 'first_contact':
+                first_sentence = memory_content.split('.')[0]
+                return f"Chuchi, {first_sentence}. Tyo din ko yaad aauxha malai, timro reply le mero duniya badli diyo. 💕"
+            
+            elif category == 'nickname':
+                return f"{memory_content} Timi mero Chuchi ho, always. 💙"
+            
+            elif category == 'special_moments':
+                first_sentence = memory_content.split('.')[0]
+                return f"I'll never forget: {first_sentence}. Those moments with you are my treasure, Chuchi. ✨"
+            
+            elif category == 'promises':
+                first_sentence = memory_content.split('.')[0]
+                return f"I meant every word: {first_sentence}. You deserve everything, Chuchi. 💖"
+            
+            elif category == 'inside_jokes':
+                return f"Remember our thing? {memory_content} Tyo hamro special joke ho! 😊"
+            
+            elif category == 'favorites':
+                return f"I remember: {memory_content} Timi lai khushi dekher mero dil bhari hunxa. 💕"
+            
+            elif category == 'personality':
+                return f"{memory_content} That's what makes you special to me, Chuchi. 💙"
+            
+            elif category == 'apologies':
+                return f"I know I say sorry a lot, but {memory_content.lower()} You mean everything to me. 🤗"
+        
+        # Base messages by mood (used only if no memory or memory doesn't match categories)
         templates = {
             'happy': [
                 "Your happiness is my favorite thing in the world. Keep shining! ✨",
@@ -238,11 +276,6 @@ If writing creative content (poem, story, letter), make it heartfelt and persona
         # Get appropriate template
         options = templates.get(mood, templates['neutral'])
         message = random.choice(options)
-        
-        # Add memory reference if available
-        if memories and len(memories) > 0:
-            memory = memories[0]
-            message += f"\n\nRemembering: {memory.get('content', '')} 💭"
         
         return message
     

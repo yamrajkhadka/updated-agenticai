@@ -45,7 +45,8 @@ class LoveGraph:
         """
         # Initialize all agents
         self.mood_detector = MoodDetector(llm=None)
-        self.memory_agent = MemoryAgent()
+        # ✅ CRITICAL FIX: Disable vector search to use keyword-based matching
+        self.memory_agent = MemoryAgent(use_vector=False)
         self.romantic_agent = RomanticAgent(llm=None, personality="Yamraj")
         self.surprise_agent = SurpriseAgent(llm=None)
         self.safety_agent = SafetyAgent(strictness="medium")
@@ -164,8 +165,17 @@ class LoveGraph:
         return state
     
     def _route_by_mood(self, state: LoveState) -> str:
-        """Decide which path to take based on mood"""
+        """Decide which path to take based on mood and message content"""
         mood = state['mood']
+        
+        # Check if asking about memories FIRST
+        message_lower = state['input'].lower()
+        memory_keywords = ['first', 'remember', 'yaad', 'start', 'began', 
+                           'when', 'how', 'facebook', 'message', 'kura', 'gareko', 'garya']
+        
+        # If asking about memories, ALWAYS retrieve them
+        if any(kw in message_lower for kw in memory_keywords):
+            return "memories"
         
         # Sad or stressed → Get memories for comfort
         if mood in ['sad', 'stressed', 'angry']:
@@ -236,13 +246,22 @@ class LoveGraph:
         mood_result = self.mood_detector.detect(message)
         mood = mood_result['mood']
         
+        # Check for memory-related queries
+        message_lower = message.lower()
+        memory_keywords = ['first', 'remember', 'yaad', 'start', 'began', 
+                           'when', 'how', 'facebook', 'message', 'kura', 'gareko', 'garya']
+        has_memory_query = any(kw in message_lower for kw in memory_keywords)
+        
         # Get memories if needed
         memories = []
-        if mood in ['sad', 'stressed', 'angry']:
+        if has_memory_query or mood in ['sad', 'stressed', 'angry']:
             memories = self.memory_agent.retrieve_memories(message, k=2)
+            print(f"🧠 Retrieved {len(memories)} memories")
+            if memories:
+                print(f"   Top memory: {memories[0].get('category')} - {memories[0].get('content')[:60]}...")
         
         # Generate response
-        if mood in ['happy', 'playful']:
+        if mood in ['happy', 'playful'] and not has_memory_query:
             # Get surprise idea
             date_ideas = self.surprise_agent.get_date_ideas_by_mood(mood)
             if date_ideas:
@@ -251,7 +270,7 @@ class LoveGraph:
             else:
                 response = self.romantic_agent.generate_message(mood, message, memories)
         else:
-            # Romantic response
+            # Romantic response (will use memories if available)
             response = self.romantic_agent.generate_message(mood, message, memories)
         
         # Safety check
@@ -261,7 +280,7 @@ class LoveGraph:
             'response': safety_result['fixed_text'],
             'mood': mood,
             'mood_emoji': mood_result['emoji'],
-            'agent_path': ['mood_detector', 'romantic_agent', 'safety_agent'],
+            'agent_path': ['mood_detector', 'memory_agent' if memories else '', 'romantic_agent', 'safety_agent'],
             'safe': safety_result['fixed_safe'],
             'safety_score': safety_result['fixed_score'],
             'memories_used': len(memories)
@@ -276,6 +295,7 @@ User Input
     ↓
 [Mood Detector] → Analyzes emotion
     ↓
+    ├─ Memory Query? → [Memory Agent] → [Romantic Response]
     ├─ Sad/Stressed/Angry → [Memory Agent] → [Romantic Response]
     ├─ Happy/Playful → [Surprise Planner]
     └─ Romantic/Neutral → [Romantic Response]
@@ -294,6 +314,7 @@ if __name__ == "__main__":
     print(graph.get_graph_visualization())
     
     test_messages = [
+        "How did we first start talking?",
         "I miss you so much 😢",
         "I'm so happy today! 😊",
         "I love you ❤️"
@@ -304,6 +325,7 @@ if __name__ == "__main__":
         result = graph.process_message(msg)
         print(f"Mood: {result['mood']} {result['mood_emoji']}")
         print(f"Agent Path: {' → '.join(result['agent_path'])}")
+        print(f"Memories Used: {result['memories_used']}")
         print(f"Response:\n{result['response']}")
         print(f"Safety Score: {result['safety_score']}/100")
         print("-" * 50)
